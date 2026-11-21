@@ -81,5 +81,33 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 数据契约 V2 迁移域
+
+V1 的契约数据集引用与模型源表映射依赖字符串包含匹配（`编号 in 文本`），
+`SRC-1` 会误中 `SRC-10`、`SRC-1-V2`。`backend/app/services/contract_v2/`
+把身份迁移到结构化三元组，并提供完整的迁移、上线与回滚闭环：
+
+- `identities.py`：V2 来源身份 `v2://<来源类型>/<来源编号>` 与字段身份
+  `v2://<来源类型>/<来源编号>#<字段>`；旧记号只做精确等值解析，
+  歧义（同编号多类型）与未知记号保留原输入并标记待核实。
+- `migration.py`：迁移契约/模型字段引用，生成 `v2_source_field_mapping`
+  来源字段映射记录；`v2_migration_manifest` 记录每组采用的映射与待复核项，
+  `v2_migration_history` 保存改写前后快照。重复提交按输入指纹幂等，
+  只确认一次整组新映射；回滚按快照还原，迁移与回滚历史均可读。
+- `promotion.py`：语义模型上线门禁——未迁移或仍有待核实项拒绝上线，
+  每个可读字段必须在本模型整组映射内证明身份，禁止跨来源拼接不存在的字段；
+  采用的映射回写清单，变更只沿 V2 映射传播。
+- `demo_data.py` / `demo_run.py`：前缀重合示例数据集与端到端演示。
+
+运行演示（隔离示例数据，依次执行迁移、一次模型上线、回滚并校验改写与历史）：
+
+```bash
+make demo-v2
+# 或
+cd backend && PYTHONPATH=. .venv/bin/python -E -m app.services.contract_v2.demo_run
+```
+
+对应测试：`backend/tests/test_contract_v2.py`（`make test` 运行全量）。
+
 领域：数据工程
 子方向：数据分析与数据应用
